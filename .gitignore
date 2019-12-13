@@ -1,3 +1,4 @@
+# Haskell Stuff
 dist
 dist-*
 cabal-dev
@@ -22,3 +23,7 @@ cabal.project.local~
 .HTF/
 .ghc.environment.*
 stack*.yaml.lock
+
+# Swap files
+.*.swp
+.*.swo

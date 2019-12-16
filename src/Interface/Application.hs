@@ -17,18 +17,25 @@ import           Interface.Types
 import           Graphics.Vty.Input.Events
 import           Graphics.Vty.Attributes
 
+visApp :: App AppState e Name
+visApp = App 
+    -- | drawing function: how to display based on state
+    { appDraw          = drawApp 
+    -- | cursor selection function: we don't use cursors in this app
+    , appChooseCursor  = const . const Nothing
+    -- | event handling function: update app state based on input such as keystrokes
+    , appHandleEvent   = handleEvent
+    -- | event taking place when app starts - does nothing
+    , appStartEvent    = \s -> return s
+    -- | simple attribute map concerns list selected item only
+    , appAttrMap       = myAttrMap
+    }
+
+-- | construct initial state based on a list of infer issues
 initialState :: [Issue] -> AppState
 initialState is =
     AppState { issuesList = list IssuesList (V.fromList is) 1
              , selected   = Nothing
-             }
-
-visApp :: App AppState e Name
-visApp = App { appDraw          = drawApp 
-             , appChooseCursor  = chooseCursor
-             , appHandleEvent   = handleEvent
-             , appStartEvent    = startEvent
-             , appAttrMap       = myAttrMap
              }
 
 drawApp :: AppState -> [Widget Name]
@@ -38,11 +45,9 @@ drawApp AppState{..} =
                 Nothing  -> renderListWithIndex renderListIssue True issuesList
                 Just iss -> renderTrace iss
 
-chooseCursor :: AppState -> [CursorLocation Name] -> Maybe (CursorLocation Name)
-chooseCursor _ _ = Nothing
-
 handleEvent :: AppState -> BrickEvent Name e -> EventM Name (Next AppState)
 handleEvent s (VtyEvent (EvKey (KChar 'q') _ms)) = halt s -- always quit when q is pressed
+handleEvent s (VtyEvent (EvKey (KChar 'c') [MCtrl])) = halt s -- respect ctrl-c
 handleEvent s@AppState{..} (VtyEvent e) | Just bugTrace <- selected = -- handle differently if issue is selected
   case e of
     EvKey KBS _ms -> continue $ s { selected = Nothing }
@@ -61,9 +66,6 @@ handleEvent s _ = continue s
 selectIssue :: AppState -> AppState
 selectIssue s@AppState{..} | Just (_, iss) <- listSelectedElement issuesList = s { selected = Just (mkState iss) }
                            | otherwise = s
-
-startEvent :: AppState -> EventM Name AppState
-startEvent s = return s
 
 myAttrMap :: AppState -> AttrMap
 myAttrMap _s = attrMap defAttr [ ("issue" <> "unselected", defAttr)

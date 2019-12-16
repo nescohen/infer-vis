@@ -112,7 +112,7 @@ renderStep :: Int -> Bool -> BugStep -> Widget Name
 renderStep index selected BugStep{..} =
      padTop (Pad 1) $ withAttr att
       (  txt ((T.pack $ show index) <> ".")
-     <=> txt (file <> "at line " <> (T.pack $ show line) <> ".")
+     <=> txt (file <> " at line " <> (T.pack $ show line) <> ".")
      <=> txt description
       )
  where

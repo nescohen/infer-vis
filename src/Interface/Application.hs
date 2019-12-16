@@ -20,6 +20,7 @@ import           Graphics.Vty.Attributes
 initialState :: [Issue] -> AppState
 initialState is =
     AppState { issuesList = list IssuesList (V.fromList is) 1
+             , selected   = Nothing
              }
 
 visApp :: App AppState e Name
@@ -33,17 +34,33 @@ visApp = App { appDraw          = drawApp
 drawApp :: AppState -> [Widget Name]
 drawApp AppState{..} =
     return $  renderHeader (length (listElements issuesList))
-          <=> renderListWithIndex renderListIssue True issuesList
+          <=> case selected of 
+                Nothing  -> renderListWithIndex renderListIssue True issuesList
+                Just iss -> renderTrace iss
 
 chooseCursor :: AppState -> [CursorLocation Name] -> Maybe (CursorLocation Name)
 chooseCursor _ _ = Nothing
 
 handleEvent :: AppState -> BrickEvent Name e -> EventM Name (Next AppState)
-handleEvent s (VtyEvent (EvKey (KChar 'q') _ms)) = halt s
-handleEvent s (VtyEvent e) =
-  do list' <- handleListEventVi handleListEvent e (issuesList s)
-     continue $ s { issuesList = list' }
+handleEvent s (VtyEvent (EvKey (KChar 'q') _ms)) = halt s -- always quit when q is pressed
+handleEvent s@AppState{..} (VtyEvent e) | Just bugTrace <- selected = -- handle differently if issue is selected
+  case e of
+    EvKey KBS _ms -> continue $ s { selected = Nothing }
+    _ -> do list' <- handleListEventVi handleListEvent e (steps bugTrace)
+            continue $ updateSelected (updateBugStateList list') s
+                                        | otherwise = -- default interface which is list of issues
+  case e of
+    EvKey KEnter _ms -> continue $ selectIssue s
+    _ -> do list' <- handleListEventVi handleListEvent e issuesList
+            continue $ s { issuesList = list' }
+ where
+  updateBugStateList l (Just t) = Just (t { steps = l })
+  updateBugStateList _ Nothing  = Nothing
 handleEvent s _ = continue s
+
+selectIssue :: AppState -> AppState
+selectIssue s@AppState{..} | Just (_, iss) <- listSelectedElement issuesList = s { selected = Just (mkState iss) }
+                           | otherwise = s
 
 startEvent :: AppState -> EventM Name AppState
 startEvent s = return s
@@ -57,21 +74,22 @@ welcomeText :: Text
 welcomeText =
  T.unlines $ [ "Welcome to the infer visualizer!"
              , "Select an issue from the list below to see the trace."
+             , ""
              , "Menu: "
-             , "vi/arrow keys - navigation"
-             , "enter - select issue"
-             , "q - quit"
+             , "  vi/arrow keys - navigation"
+             , "  enter - select"
+             , "  backspace - go back"
+             , "  q - quit"
              , ""
              ]
 
-issuesHeader :: Int -> Text
-issuesHeader n = "Infer reports " <> (T.pack $ show n) <> " total issues."
-
 renderHeader :: Int -> Widget Name
 renderHeader n = border $ padRight Max $ txt (welcomeText <> "\n" <> issuesHeader n)
+ where
+  issuesHeader num = "Infer reports " <> (T.pack $ show num) <> " total issues."
 
 renderListIssue :: Int -> Bool -> Issue -> Widget Name
-renderListIssue n True  i =
+renderListIssue n True i =
     withAttr ("issue" <> "selected") $
       txt (issueTitle n i)
 renderListIssue n False i =
@@ -84,3 +102,17 @@ issueTitle n Issue{..} =  T.pack (show (n+1)) <> " - "
                        <> bugType <> ": "
                        <> file <> " on line "
                        <> T.pack (show line)
+
+renderTrace :: BugTraceState -> Widget Name
+renderTrace BugTraceState{..} = renderListWithIndex renderStep True steps
+
+renderStep :: Int -> Bool -> BugStep -> Widget Name
+renderStep index selected BugStep{..} =
+     padTop (Pad 1) $ withAttr att
+      (  txt ((T.pack $ show index) <> ".")
+     <=> txt (file <> "at line " <> (T.pack $ show line) <> ".")
+     <=> txt description
+      )
+ where
+   att = if selected then ("issue" <> "selected")
+         else ("issue" <> "unselected")
